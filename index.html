@@ -219,21 +219,25 @@
                 return;
             }
 
+           // 🚨 修正と診断用：GASからの応答をテキストとして受け取り、原因を特定します 🚨
             try {
-                 // 指数バックオフを実装して再試行
+                // 指数バックオフはそのまま残し、通信ロジックのみを診断用に変更します
                 let lastError = null;
-                let data = null;
-                
+                let rawResponseText = null;
+
                 for (let i = 0; i < 3; i++) { // 最大3回試行
                     try {
                         const url = `${GAS_URL}?userId=${userId}`;
                         const response = await fetch(url);
                         
+                        // 応答を生のテキストとして取得
+                        rawResponseText = await response.text();
+                        
                         if (!response.ok) {
-                            throw new Error(`GASエラー: ${response.status}`);
+                             // GASエラーではなく、HTTPステータスエラー（404, 500など）
+                             throw new Error(`GAS HTTPエラー: ${response.status} - ${rawResponseText.substring(0, 50)}...`);
                         }
                         
-                        data = await response.json();
                         break; // 成功
                     } catch (e) {
                         lastError = e;
@@ -243,15 +247,31 @@
                         }
                     }
                 }
-                if (!data) throw lastError; // 3回試行失敗
+                
+                // 3回試行失敗したらここでエラー
+                if (!rawResponseText) throw lastError; 
 
+                // 🚨🚨🚨 応答内容の確認 🚨🚨🚨
+                console.log("--- GASからの生応答データ (真の原因) ---");
+                console.log(rawResponseText);
+                console.log("-----------------------------------------");
+
+                // 生のテキストをJSONとしてパースする（ここでJSONエラーが発生するはず）
+                const data = JSON.parse(rawResponseText);
+                
+                // GASが意図的にエラーを返した場合の処理
+                if (data.error) {
+                    throw new Error(`GASエラー: ${data.message}`);
+                }
+                
+                // 成功時のデータパースロジック
                 let loadedStatuses = {};
                 if (data.lineStatusesJson) {
                     try {
                         // JSON文字列として保存されたデータをパース
                         loadedStatuses = JSON.parse(data.lineStatusesJson);
                     } catch(e) {
-                        console.error("Failed to parse ride data from GAS:", e);
+                        console.error("Failed to parse line data from GAS:", e);
                     }
                 }
                 
@@ -264,7 +284,6 @@
             } finally {
                 document.getElementById('loadingIndicator').classList.add('hidden');
             }
-        };
         
         // ------------------------------------
         // 2. UIロジック
