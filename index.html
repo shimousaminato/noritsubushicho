@@ -23,7 +23,7 @@
         // =========================================================================
         // 🚨 🌟 🌟 最重要: ここにデプロイしたGoogle Apps ScriptのURLを貼り付けてください 🌟 🌟 🚨
         // 例: 'https://script.google.com/macros/s/AKfycb.../exec'
-        const GAS_URL = 'https://script.google.com/macros/s/AKfycbxwLSPG73O0DLyNWrAdBlJIaJjp_2alVUR8mEc92jwgggnZ2b05E8UFLvorXNTjFmvs9A/exec'; 
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbw0Kd4lq_Dqy7KFuEVu17bYXyjruHiBHKEDFfZuwpnwyPsQrhY9bQ1GJI_v03FNngWSxw/exec'; 
         // =========================================================================
         
         // ユーザーIDの代わりに、ここではブラウザのローカルストレージに保存された固有IDを使用します。
@@ -39,7 +39,10 @@
         // ------------------------------------
         const dummyRailroadData = {
             "type": "FeatureCollection",
-            "features": [
+            "features": [ 
+                // JR北海道
+                { "properties": { "N02_005": "函館本線", "N02_004": "JR北海道", "stations": ["函館", "長万部", "小樽", "札幌"] } },
+                
                 // JR東日本
                 { "properties": { "N02_005": "東北新幹線", "N02_004": "JR東日本", "stations": ["東京", "仙台", "盛岡", "新青森"] } },
                 { "properties": { "N02_005": "山手線", "N02_004": "JR東日本", "stations": ["東京", "品川", "渋谷", "新宿", "池袋"] } },
@@ -64,9 +67,6 @@
                 // JR九州
                 { "properties": { "N02_005": "九州新幹線", "N02_004": "JR九州", "stations": ["博多", "熊本", "鹿児島中央"] } },
                 { "properties": { "N02_005": "鹿児島本線", "N02_004": "JR九州", "stations": ["門司港", "博多", "熊本", "八代"] } },
-
-                // JR北海道
-                { "properties": { "N02_005": "函館本線", "N02_004": "JR北海道", "stations": ["函館", "長万部", "小樽", "札幌"] } },
 
                 // 私鉄・その他
                 { "properties": { "N02_005": "東武伊勢崎線", "N02_004": "東武鉄道", "stations": ["浅草", "北千住", "久喜", "伊勢崎"] } },
