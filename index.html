@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鉄道経県値マップ (GAS連携版)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Interフォントを適用 */
+        body {
+            font-family: "Inter", sans-serif;
+        }
+        /* スクロールバーのデザインを調整 */
+        #lineListContainer {
+            max-height: 65vh;
+            overflow-y: auto;
+        }
+    </style>
+    
+    <!-- GAS連携のためのJavaScript -->
+    <script type="module">
+        // =========================================================================
+        // 🚨 🌟 🌟 最重要: ここにデプロイしたGoogle Apps ScriptのURLを貼り付けてください 🌟 🌟 🚨
+        // 例: 'https://script.google.com/macros/s/AKfycb.../exec'
+        const GAS_URL = 'YOUR_GOOGLE_APPS_SCRIPT_DEPLOYMENT_URL_HERE'; 
+        // =========================================================================
+        
+        // ユーザーIDの代わりに、ここではブラウザのローカルストレージに保存された固有IDを使用します。
+        // これにより、Firebaseの認証なしでユーザーを識別できます。
+        let userId = localStorage.getItem('railroad_map_user_id');
+        if (!userId) {
+            userId = crypto.randomUUID();
+            localStorage.setItem('railroad_map_user_id', userId);
+        }
+        
+        // ------------------------------------
+        // ダミーの日本鉄道路線データ
+        // ------------------------------------
+        const dummyRailroadData = {
+            "type": "FeatureCollection",
+            "features": [
+                // JR東日本
+                { "properties": { "N02_005": "東北新幹線", "N02_004": "JR東日本", "stations": ["東京", "仙台", "盛岡", "新青森"] } },
+                { "properties": { "N02_005": "山手線", "N02_004": "JR東日本", "stations": ["東京", "品川", "渋谷", "新宿", "池袋"] } },
+                { "properties": { "N02_005": "京浜東北線", "N02_004": "JR東日本", "stations": ["大宮", "上野", "横浜", "大船"] } },
+                { "properties": { "N02_005": "中央本線", "N02_004": "JR東日本", "stations": ["東京", "八王子", "甲府", "松本"] } },
+                { "properties": { "N02_005": "埼京線", "N02_004": "JR東日本", "stations": ["大崎", "新宿", "大宮", "川越"] } },
+
+                // JR東海
+                { "properties": { "N02_005": "東海道新幹線", "N02_004": "JR東海", "stations": ["東京", "名古屋", "新大阪"] } },
+                { "properties": { "N02_005": "東海道本線", "N02_004": "JR東海", "stations": ["熱海", "静岡", "浜松", "豊橋"] } },
+                
+                // JR西日本
+                { "properties": { "N02_005": "山陽新幹線", "N02_004": "JR西日本", "stations": ["新大阪", "岡山", "広島", "博多"] } },
+                { "properties": { "N02_005": "大阪環状線", "N02_004": "JR西日本", "stations": ["大阪", "天王寺", "京橋", "西九条"] } },
+                { "properties": { "N02_005": "北陸本線", "N02_004": "JR西日本", "stations": ["米原", "敦賀", "金沢"] } },
+
+                // JR四国 (高知関連路線を充実)
+                { "properties": { "N02_005": "土讃線", "N02_004": "JR四国", "stations": ["高知", "窪川", "阿波池田", "琴平"] } },
+                { "properties": { "N02_005": "予讃線", "N02_004": "JR四国", "stations": ["高松", "松山", "宇和島"] } },
+                { "properties": { "N02_005": "予土線", "N02_004": "JR四国", "stations": ["窪川", "江川崎", "宇和島"] } },
+
+                // JR九州
+                { "properties": { "N02_005": "九州新幹線", "N02_004": "JR九州", "stations": ["博多", "熊本", "鹿児島中央"] } },
+                { "properties": { "N02_005": "鹿児島本線", "N02_004": "JR九州", "stations": ["門司港", "博多", "熊本", "八代"] } },
+
+                // JR北海道
+                { "properties": { "N02_005": "函館本線", "N02_004": "JR北海道", "stations": ["函館", "長万部", "小樽", "札幌"] } },
+
+                // 私鉄・その他
+                { "properties": { "N02_005": "東武伊勢崎線", "N02_004": "東武鉄道", "stations": ["浅草", "北千住", "久喜", "伊勢崎"] } },
+                { "properties": { "N02_005": "西武池袋線", "N02_004": "西武鉄道", "stations": ["池袋", "所沢", "飯能"] } },
+                { "properties": { "N02_005": "東急東横線", "N02_004": "東急電鉄", "stations": ["渋谷", "中目黒", "横浜", "元町・中華街"] } },
+                { "properties": { "N02_005": "小田急小田原線", "N02_004": "小田急電鉄", "stations": ["新宿", "町田", "小田原", "箱根湯本"] } },
+                { "properties": { "N02_005": "近鉄奈良線", "N02_004": "近畿日本鉄道", "stations": ["大阪難波", "鶴橋", "東花園", "近鉄奈良"] } },
+                { "properties": { "N02_005": "名鉄名古屋本線", "N02_004": "名古屋鉄道", "stations": ["豊橋", "知立", "名鉄名古屋", "名鉄岐阜"] } },
+                { "properties": { "N02_005": "西鉄天神大牟田線", "N02_004": "西日本鉄道", "stations": ["福岡天神", "西鉄久留米", "大牟田"] } },
+                { "properties": { "N02_005": "琴平線", "N02_004": "高松琴平電気鉄道", "stations": ["高松築港", "瓦町", "仏生山", "琴電琴平"] } },
+            ]
+        };
+        
+        // 路線全体の状態の定数
+        const RIDE_STATUS = {
+            NOT_RIDDEN: 0,
+            RIDDEN: 1,
+            COMPLETED: 2
+        };
+        const STATUS_LABELS = {
+            [RIDE_STATUS.NOT_RIDDEN]: "未乗車",
+            [RIDE_STATUS.RIDDEN]: "乗車済み",
+            [RIDE_STATUS.COMPLETED]: "完乗済み"
+        };
+        const STATUS_COLORS = {
+            [RIDE_STATUS.NOT_RIDDEN]: "text-gray-500 bg-gray-100 border-gray-300 hover:bg-gray-200",
+            [RIDE_STATUS.RIDDEN]: "text-blue-700 bg-blue-100 border-blue-400 hover:bg-blue-200",
+            [RIDE_STATUS.COMPLETED]: "text-emerald-700 bg-emerald-100 border-emerald-400 hover:bg-emerald-200"
+        };
+        
+        // 駅単位の利用回数ステータスの定数
+        const USAGE_STATUS = {
+            NOT_ALIGHTED: 0,
+            ONCE: 1,
+            LESS_THAN_TEN: 2,
+            TEN_OR_MORE: 3
+        };
+        const USAGE_LABELS = {
+            [USAGE_STATUS.NOT_ALIGHTED]: "未降車",
+            [USAGE_STATUS.ONCE]: "利用1回",
+            [USAGE_STATUS.LESS_THAN_TEN]: "10回未満",
+            [USAGE_STATUS.TEN_OR_MORE]: "10回以上"
+        };
+        const USAGE_COLORS = {
+            [USAGE_STATUS.NOT_ALIGHTED]: "text-gray-500 bg-gray-100",
+            [USAGE_STATUS.ONCE]: "text-yellow-700 bg-yellow-100",
+            [USAGE_STATUS.LESS_THAN_TEN]: "text-blue-700 bg-blue-100",
+            [USAGE_STATUS.TEN_OR_MORE]: "text-red-700 bg-red-100"
+        };
+        
+        // 駅単位の利用回数ステータスに対応するポイント
+        const USAGE_POINTS = {
+            [USAGE_STATUS.NOT_ALIGHTED]: 0,
+            [USAGE_STATUS.ONCE]: 1,
+            [USAGE_STATUS.LESS_THAN_TEN]: 2,
+            [USAGE_STATUS.TEN_OR_MORE]: 3
+        };
+        
+
+        // グローバル変数
+        // 構造: { [lineName]: { overallStatus: number, stations: { [stationName]: number } } }
+        let lineStatuses = {}; 
+        let isSaving = false;
+        let groupedLines = {}; // 会社名でグループ化された路線データ
+
+        // ------------------------------------
+        // 路線データを会社名でグループ化
+        // ------------------------------------
+        const groupLinesByCompany = () => {
+            const groups = {};
+            dummyRailroadData.features.forEach(feature => {
+                const company = feature.properties.N02_004;
+                if (!groups[company]) {
+                    groups[company] = [];
+                }
+                groups[company].push(feature);
+            });
+            return groups;
+        };
+
+        // ------------------------------------
+        // 1. GASデータ操作 (バックエンド通信)
+        // ------------------------------------
+        
+        // データの保存（POSTリクエスト）
+        const saveDataToGas = async (newStatuses) => {
+            if (GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_DEPLOYMENT_URL_HERE') {
+                console.error("GAS URLが設定されていません。データを保存できません。");
+                alertMessage("エラー: GAS URLを設定してください。", 'bg-red-500');
+                return;
+            }
+            if (isSaving) {
+                console.warn("現在保存中です。");
+                return;
+            }
+            
+            isSaving = true;
+            
+            // 保存時はJSON文字列に変換
+            const payload = {
+                userId: userId,
+                lineStatusesJson: JSON.stringify(newStatuses)
+            };
+            
+            try {
+                // 指数バックオフを実装して再試行
+                let lastError = null;
+                for (let i = 0; i < 3; i++) { // 最大3回試行
+                    try {
+                        const response = await fetch(GAS_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`GASエラー: ${response.status}`);
+                        }
+                        
+                        alertMessage("データを保存しました。", 'bg-emerald-500');
+                        isSaving = false;
+                        return; // 成功
+                    } catch (e) {
+                        lastError = e;
+                        const delay = Math.pow(2, i) * 1000; // 1秒, 2秒, 4秒
+                        if (i < 2) { // 最後の試行では待たない
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                        }
+                    }
+                }
+                // 3回試行失敗
+                throw lastError; 
+
+            } catch (e) {
+                console.error("Error saving ride data to GAS:", e);
+                alertMessage(`データの保存に失敗しました: ${e.message}`, 'bg-red-500');
+            } finally {
+                isSaving = false;
+            }
+        };
+
+        // データの取得（GETリクエスト）
+        const setupDataListener = async () => {
+            if (GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_DEPLOYMENT_URL_HERE') {
+                // URL未設定の場合もUI表示を継続するため、エラーログのみ
+                console.error("GAS URLが設定されていません。ローカルデータとして初期化します。");
+                lineStatuses = {};
+                updateUI();
+                document.getElementById('loadingIndicator').classList.add('hidden');
+                return;
+            }
+
+            try {
+                 // 指数バックオフを実装して再試行
+                let lastError = null;
+                let data = null;
+                
+                for (let i = 0; i < 3; i++) { // 最大3回試行
+                    try {
+                        const url = `${GAS_URL}?userId=${userId}`;
+                        const response = await fetch(url);
+                        
+                        if (!response.ok) {
+                            throw new Error(`GASエラー: ${response.status}`);
+                        }
+                        
+                        data = await response.json();
+                        break; // 成功
+                    } catch (e) {
+                        lastError = e;
+                        const delay = Math.pow(2, i) * 1000; // 1秒, 2秒, 4秒
+                        if (i < 2) {
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                        }
+                    }
+                }
+                if (!data) throw lastError; // 3回試行失敗
+
+                let loadedStatuses = {};
+                if (data.lineStatusesJson) {
+                    try {
+                        // JSON文字列として保存されたデータをパース
+                        loadedStatuses = JSON.parse(data.lineStatusesJson);
+                    } catch(e) {
+                        console.error("Failed to parse ride data from GAS:", e);
+                    }
+                }
+                
+                lineStatuses = loadedStatuses; // グローバル変数を更新
+                updateUI(); // UI全体を更新
+
+            } catch (error) {
+                console.error("GASデータ取得失敗:", error);
+                alertMessage(`エラー: データ取得に失敗しました。${error.message}`, 'bg-red-500');
+            } finally {
+                document.getElementById('loadingIndicator').classList.add('hidden');
+            }
+        };
+        
+        // ------------------------------------
+        // 2. UIロジック
+        // ------------------------------------
+        
+        // 路線全体の状態変更ハンドラ (RIDDEN/COMPLETED)
+        const handleOverallStatusChange = (lineName, newStatus) => {
+            const status = parseInt(newStatus, 10);
+            
+            // データ同期後に処理を実行
+            setupDataListener().then(() => {
+                const newLineStatuses = JSON.parse(JSON.stringify(lineStatuses)); // deep clone
+
+                if (!newLineStatuses[lineName]) {
+                    newLineStatuses[lineName] = { overallStatus: RIDE_STATUS.NOT_RIDDEN, stations: {} };
+                }
+
+                if (status === RIDE_STATUS.NOT_RIDDEN) {
+                     // 路線全体のステータスを削除する場合、駅データも一緒に削除
+                    delete newLineStatuses[lineName];
+                } else {
+                    // 乗車済みまたは完乗済みを記録
+                    newLineStatuses[lineName].overallStatus = status;
+                }
+                
+                saveDataToGas(newLineStatuses); // GAS保存
+            }).catch(e => console.error("データ更新前同期エラー:", e));
+        };
+        
+        // 駅単位の利用回数変更ハンドラ
+        const handleStationUsageChange = (lineName, stationName, newUsageStatus) => {
+             const status = parseInt(newUsageStatus, 10);
+
+             setupDataListener().then(() => {
+                 const newLineStatuses = JSON.parse(JSON.stringify(lineStatuses)); // deep clone
+
+                 // 路線エントリがない場合は作成し、デフォルトは未乗車
+                 if (!newLineStatuses[lineName]) {
+                     newLineStatuses[lineName] = { overallStatus: RIDE_STATUS.NOT_RIDDEN, stations: {} };
+                 }
+
+                 // ステーションエントリがない場合は作成
+                 if (!newLineStatuses[lineName].stations) {
+                     newLineStatuses[lineName].stations = {};
+                 }
+
+                 if (status === USAGE_STATUS.NOT_ALIGHTED) {
+                     // 未降車に戻す場合は、駅の利用回数データを削除
+                     delete newLineStatuses[lineName].stations[stationName];
+                     
+                     // 路線内に記録されている駅がなくなったら、路線全体のステータスも削除
+                     if (Object.keys(newLineStatuses[lineName].stations).length === 0) {
+                         delete newLineStatuses[lineName];
+                     }
+                 } else {
+                     // 利用回数を記録
+                     newLineStatuses[lineName].stations[stationName] = status;
+                     
+                     // 駅に利用回数を記録したら、路線全体を自動的に「乗車済み」にする
+                     if (newLineStatuses[lineName].overallStatus === RIDE_STATUS.NOT_RIDDEN) {
+                         newLineStatuses[lineName].overallStatus = RIDE_STATUS.RIDDEN;
+                     }
+                 }
+                 
+                 saveDataToGas(newLineStatuses); // GAS保存
+             }).catch(e => console.error("データ更新前同期エラー:", e));
+        };
+        
+        // イベントリスナーの委譲
+        document.addEventListener('click', (event) => {
+            if (event.target.classList.contains('overall-status-button')) {
+                const lineName = event.target.dataset.line;
+                const newStatus = event.target.dataset.status;
+                handleOverallStatusChange(lineName, newStatus);
+            } else if (event.target.classList.contains('usage-status-button')) {
+                const lineName = event.target.dataset.line;
+                const stationName = event.target.dataset.station;
+                const newUsageStatus = event.target.dataset.status;
+                handleStationUsageChange(lineName, stationName, newUsageStatus);
+            }
+        });
+
+        // 統計情報の更新
+        const updateStats = () => {
+            const totalLines = dummyRailroadData.features.length;
+            
+            const statuses = Object.values(lineStatuses).map(item => item.overallStatus);
+            
+            const riddenCount = statuses.filter(status => 
+                status === RIDE_STATUS.RIDDEN || status === RIDE_STATUS.COMPLETED
+            ).length;
+
+            const completedCount = statuses.filter(status => 
+                status === RIDE_STATUS.COMPLETED
+            ).length;
+            
+            const riddenRate = totalLines > 0 ? ((riddenCount / totalLines) * 100).toFixed(1) : 0;
+            const completedRate = totalLines > 0 ? ((completedCount / totalLines) * 100).toFixed(1) : 0;
+
+            document.getElementById('totalLines').textContent = totalLines;
+            document.getElementById('riddenCount').textContent = riddenCount;
+            document.getElementById('completedCount').textContent = completedCount;
+            document.getElementById('riddenRate').textContent = riddenRate + '%';
+            document.getElementById('completedRate').textContent = completedRate + '%';
+        };
+
+        // 路線リストの描画
+        const renderLineList = (openLines = [], openCompanies = []) => {
+            const container = document.getElementById('lineListContainer');
+            if (!container) return;
+
+            container.innerHTML = ''; // クリア
+
+            const sortedCompanies = Object.keys(groupedLines);
+
+            sortedCompanies.forEach(company => {
+                const features = groupedLines[company];
+                
+                // details要素（会社名アコーディオン）を作成
+                const companyDetails = document.createElement('details');
+                companyDetails.className = 'group border-b border-gray-200 cursor-pointer';
+                
+                // 会社アコーディオンの状態を復元
+                companyDetails.open = openCompanies.length === 0 || openCompanies.includes(company); 
+
+                
+                // summary要素（ヘッダー）を作成
+                const summary = document.createElement('summary');
+                summary.className = 'flex justify-between items-center p-3 font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 transition duration-150 rounded-t-lg';
+                summary.innerHTML = `
+                    <span class="text-lg">${company} (${features.length}路線)</span>
+                    <svg class="w-5 h-5 transition-transform duration-300 group-open:rotate-180 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                `;
+                companyDetails.appendChild(summary);
+                
+                // 路線リスト（中身）を作成
+                const lineUl = document.createElement('ul');
+                lineUl.className = 'p-3 bg-white space-y-3';
+
+                features.forEach(feature => {
+                    const lineName = feature.properties.N02_005;
+                    const stations = feature.properties.stations || [];
+                    const currentLineData = lineStatuses[lineName] || { overallStatus: RIDE_STATUS.NOT_RIDDEN, stations: {} };
+                    const currentOverallStatus = currentLineData.overallStatus;
+                    
+                    // --- ポイント計算ロジックの追加 ---
+                    let currentPoints = 0;
+                    let totalPoints = 0;
+
+                    if (stations.length > 0) {
+                        stations.forEach(stationName => {
+                            // 総得点は、各駅で最大のポイント (TEN_OR_MORE = 3pt) で計算
+                            totalPoints += USAGE_POINTS[USAGE_STATUS.TEN_OR_MORE]; 
+
+                            // 現在の利用状況を取得
+                            const currentUsage = currentLineData.stations[stationName] || USAGE_STATUS.NOT_ALIGHTED;
+
+                            // 現在の得点を加算
+                            currentPoints += USAGE_POINTS[currentUsage];
+                        });
+                    }
+
+                    const pointDisplay = `${currentPoints}/${totalPoints}pt`;
+                    // --------------------------------
+
+                    const lineLi = document.createElement('li');
+                    lineLi.className = 'border border-gray-100 rounded-xl shadow-md overflow-hidden';
+                    
+                    // 路線名と全体ステータスボタンのコンテナ (details)
+                    const lineDetails = document.createElement('details');
+                    lineDetails.className = 'line-details';
+                    
+                    // 路線アコーディオンの状態を復元
+                    if (openLines.includes(lineName)) {
+                        lineDetails.open = true;
+                    }
+
+                    const lineSummary = document.createElement('summary');
+                    lineSummary.className = 'flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-white hover:bg-gray-50 cursor-pointer';
+                    
+                    // 路線名とポイントを格納するコンテナ
+                    const lineNameContainer = document.createElement('div');
+                    lineNameContainer.className = 'flex items-center justify-between w-full sm:w-1/3 mb-2 sm:mb-0';
+
+                    const lineNameSpan = document.createElement('span');
+                    lineNameSpan.className = 'text-base font-bold text-gray-800 truncate mr-2'; // ポイントと離す
+                    lineNameSpan.textContent = lineName;
+
+                    const pointBadge = document.createElement('span');
+                    pointBadge.className = 'text-sm font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0'; // flex-shrink-0で縮小を防ぐ
+                    pointBadge.textContent = pointDisplay;
+
+                    lineNameContainer.appendChild(lineNameSpan);
+                    // 総得点が0でない場合にのみポイントを表示 (stations配列がない路線など)
+                    if (totalPoints > 0) {
+                        lineNameContainer.appendChild(pointBadge);
+                    }
+
+
+                    const overallButtonGroup = document.createElement('div');
+                    overallButtonGroup.className = 'inline-flex rounded-md shadow-sm w-full sm:w-auto';
+                    
+                    // 路線全体の状態ボタン
+                    [RIDE_STATUS.NOT_RIDDEN, RIDE_STATUS.RIDDEN, RIDE_STATUS.COMPLETED].forEach(status => {
+                        const isSelected = currentOverallStatus === status;
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.textContent = STATUS_LABELS[status];
+                        button.dataset.line = lineName;
+                        button.dataset.status = status;
+                        button.title = `${lineName}を${STATUS_LABELS[status]}に設定`;
+                        
+                        let buttonClasses = `overall-status-button px-3 py-1 text-xs font-semibold transition-colors duration-150 focus:z-10 focus:ring-2 focus:ring-offset-2 rounded-lg `;
+
+                        if (isSelected) {
+                            buttonClasses += ` ${STATUS_COLORS[status].replace(/border-.*$/, 'border-2 border-current')} `;
+                        } else {
+                            buttonClasses += ` text-gray-600 bg-white border border-gray-300 hover:bg-gray-50`;
+                        }
+                        
+                        if (status === RIDE_STATUS.NOT_RIDDEN) {
+                            buttonClasses += ' rounded-r-none';
+                        } else if (status === RIDE_STATUS.COMPLETED) {
+                            buttonClasses += ' rounded-l-none -ml-px';
+                        } else {
+                            buttonClasses += ' rounded-none -ml-px';
+                        }
+                        
+                        button.className = buttonClasses;
+                        overallButtonGroup.appendChild(button);
+                    });
+                    
+                    lineSummary.appendChild(lineNameContainer);
+                    lineSummary.appendChild(overallButtonGroup);
+                    lineDetails.appendChild(lineSummary);
+                    
+                    // --- 駅リストの描画 ---
+                    if (stations.length > 0) {
+                        const stationDiv = document.createElement('div');
+                        stationDiv.className = 'p-3 pt-0 bg-gray-50 border-t border-gray-100';
+                        
+                        const stationListUl = document.createElement('ul');
+                        stationListUl.className = 'space-y-2';
+
+                        stations.forEach(stationName => {
+                            const currentUsage = currentLineData.stations[stationName] || USAGE_STATUS.NOT_ALIGHTED;
+                            
+                            const stationLi = document.createElement('li');
+                            stationLi.className = 'flex flex-col sm:flex-row sm:items-center justify-between p-2 bg-white rounded-md shadow-sm border border-gray-200';
+                            
+                            const stationNameSpan = document.createElement('span');
+                            stationNameSpan.className = 'text-sm font-medium text-gray-700 w-full sm:w-1/3 mb-1 sm:mb-0';
+                            stationNameSpan.textContent = stationName;
+
+                            const usageButtonGroup = document.createElement('div');
+                            usageButtonGroup.className = 'inline-flex rounded-md shadow-sm w-full sm:w-auto';
+                            
+                            // 駅単位の利用回数ボタン
+                            [USAGE_STATUS.NOT_ALIGHTED, USAGE_STATUS.ONCE, USAGE_STATUS.LESS_THAN_TEN, USAGE_STATUS.TEN_OR_MORE].forEach(status => {
+                                const isSelected = currentUsage === status;
+                                const button = document.createElement('button');
+                                button.type = 'button';
+                                button.textContent = USAGE_LABELS[status];
+                                button.dataset.line = lineName;
+                                button.dataset.station = stationName;
+                                button.dataset.status = status;
+                                button.title = `${stationName}の利用回数を${USAGE_LABELS[status]}に設定`;
+
+                                let buttonClasses = `usage-status-button px-2 py-1 text-xs transition-colors duration-150 focus:z-10 focus:ring-2 focus:ring-offset-2 rounded-lg `;
+
+                                if (isSelected) {
+                                    buttonClasses += ` ${USAGE_COLORS[status]} font-bold border-2 border-current`;
+                                } else {
+                                    buttonClasses += ` text-gray-600 bg-white border border-gray-300 hover:bg-gray-50`;
+                                }
+                                
+                                if (status === USAGE_STATUS.NOT_ALIGHTED) {
+                                    buttonClasses += ' rounded-r-none';
+                                } else if (status === USAGE_STATUS.TEN_OR_MORE) {
+                                    buttonClasses += ' rounded-l-none -ml-px';
+                                } else {
+                                    buttonClasses += ' rounded-none -ml-px';
+                                }
+                                
+                                button.className = buttonClasses;
+                                usageButtonGroup.appendChild(button);
+                            });
+
+                            stationLi.appendChild(stationNameSpan);
+                            stationLi.appendChild(usageButtonGroup);
+                            stationListUl.appendChild(stationLi);
+                        });
+                        
+                        stationDiv.appendChild(stationListUl);
+                        lineDetails.appendChild(stationDiv);
+                    }
+                    
+                    lineLi.appendChild(lineDetails);
+                    lineUl.appendChild(lineLi);
+                });
+                
+                companyDetails.appendChild(lineUl);
+                container.appendChild(companyDetails);
+            });
+        };
+
+        // UI全体（リストと統計情報）の更新
+        const updateUI = () => {
+            updateStats();
+
+            // --- 1. 現在開いている路線/会社を記憶 ---
+            const openLines = new Set();
+            document.querySelectorAll('#lineListContainer details.line-details').forEach(detail => {
+                if (detail.open) {
+                    const lineButton = detail.querySelector('.overall-status-button');
+                    if (lineButton) {
+                        openLines.add(lineButton.dataset.line);
+                    }
+                }
+            });
+            
+            const openCompanies = new Set();
+             document.querySelectorAll('#lineListContainer > details.group').forEach(detail => {
+                 if (detail.open) {
+                     const summarySpan = detail.querySelector('summary > span:first-child');
+                     if (summarySpan) {
+                         const companyName = summarySpan.textContent.replace(/\s*\(\d+路線\)/, '').trim();
+                         openCompanies.add(companyName);
+                     }
+                 }
+             });
+            // --- 記憶ここまで ---
+            
+            // 記憶した開閉状態を渡して再描画
+            renderLineList(Array.from(openLines), Array.from(openCompanies));
+        };
+
+        // ------------------------------------
+        // 3. ユーティリティ (アラートメッセージ)
+        // ------------------------------------
+        const alertMessage = (message, colorClass) => {
+            const alertBox = document.getElementById('customAlert');
+            alertBox.textContent = message;
+            alertBox.className = `p-3 rounded-lg text-white font-semibold text-center mt-4 ${colorClass}`;
+            alertBox.classList.remove('hidden');
+            setTimeout(() => {
+                alertBox.classList.add('hidden');
+            }, 5000);
+        };
+
+        // ------------------------------------
+        // 4. 全体の初期化
+        // ------------------------------------
+        const initAppAndData = () => {
+            document.getElementById('userIdDisplay').textContent = userId;
+            groupedLines = groupLinesByCompany();
+            setupDataListener(); // GASからデータを読み込み
+        }
+        
+        window.onload = initAppAndData;
+    </script>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen flex flex-col font-sans">
+        <header class="bg-white shadow-md p-4 sticky top-0 z-10">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7-8h14a2 2 0 012 2v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4a2 2 0 012-2z" />
+                </svg>
+                鉄道経県値マップ (GAS連携版)
+            </h1>
+            <p class="text-sm text-gray-500 mt-1">路線は乗車・完乗、駅は利用回数を記録できます。</p>
+            <div class="text-xs mt-2 p-1 bg-gray-100 rounded-md">
+                <span class="font-semibold text-gray-600">あなたのローカルID:</span> <span id="userIdDisplay">...</span>
+            </div>
+        </header>
+
+        <main class="flex-grow p-4">
+            <!-- カスタムアラート表示領域 -->
+            <div id="customAlert" class="hidden max-w-4xl mx-auto"></div>
+
+            <!-- 統計情報カード -->
+            <div class="bg-white rounded-xl shadow-lg p-4 mb-4 grid grid-cols-2 md:grid-cols-5 gap-4 max-w-4xl mx-auto">
+                <div class="text-center md:border-r border-gray-200">
+                    <p class="text-xs text-gray-500">総路線数</p>
+                    <p id="totalLines" class="text-xl md:text-2xl font-bold text-gray-800">0</p>
+                </div>
+                <div class="text-center md:border-r border-gray-200">
+                    <p class="text-xs text-gray-500">乗車済み路線数</p>
+                    <p id="riddenCount" class="text-xl md:text-3xl font-extrabold text-blue-600">0</p>
+                </div>
+                <div class="text-center md:border-r border-gray-200">
+                    <p class="text-xs text-gray-500">乗車達成率</p>
+                    <p id="riddenRate" class="text-xl md:text-2xl font-bold text-blue-700">0.0%</p>
+                </div>
+                <div class="text-center md:border-r border-gray-200">
+                    <p class="text-xs text-gray-500">完乗済み路線数</p>
+                    <p id="completedCount" class="text-xl md:text-3xl font-extrabold text-emerald-600">0</p>
+                </div>
+                <div class="text-center">
+                    <p class="text-xs text-gray-500">完乗達成率</p>
+                    <p id="completedRate" class="text-xl md:text-2xl font-bold text-emerald-700">0.0%</p>
+                </div>
+            </div>
+
+            <!-- 路線リストコンテナ -->
+            <div class="w-full max-w-4xl mx-auto rounded-xl shadow-2xl bg-white overflow-hidden">
+                <!-- ローディングインジケータ -->
+                <div id="loadingIndicator" class="p-6 flex items-center justify-center border-b border-gray-100">
+                    <div class="flex flex-col items-center">
+                        <svg class="animate-spin -ml-1 mr-3 h-8 w-8 text-emerald-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <p class="mt-2 text-emerald-700">データを読み込み中...</p>
+                    </div>
+                </div>
+                
+                <!-- 路線リストの描画ターゲット -->
+                <div id="lineListContainer" class="p-4">
+                    <!-- JavaScriptによって路線リストがここに挿入されます -->
+                </div>
+            </div>
+            
+            <p class="text-center text-sm text-gray-500 mt-4 max-w-4xl mx-auto">
+                路線・駅データはデモンストレーション用の簡略化されたダミーデータです。
+            </p>
+
+        </main>
+
+        <footer class="bg-gray-800 text-white p-4 text-center text-sm mt-4">
+            <p>鉄道経県値マップ - Powered by HTML/JS & Google Apps Script</p>
+        </footer>
+    </div>
+</body>
+</html>
